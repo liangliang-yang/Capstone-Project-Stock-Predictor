@@ -59,9 +59,9 @@ def run_server():
         html.Div([
             dcc.DatePickerSingle(
                 id='start-date-picker',
-                min_date_allowed=dt(2000, 1, 1),
+                min_date_allowed=dt(1990, 1, 1),
                 max_date_allowed=today,
-                initial_visible_month=dt(2015, 1, 1),
+                initial_visible_month=dt(2000, 1, 1),
                 # date=dt(2015, 1, 1)
             ),
             # html.Div(id='start-date-output-container')
@@ -71,15 +71,15 @@ def run_server():
         html.Div([
             dcc.DatePickerSingle(
                 id='end-date-picker',
-                min_date_allowed=dt(2000, 1, 1),
+                min_date_allowed=dt(1990, 1, 1),
                 max_date_allowed=today,
-                initial_visible_month=dt(2020, 1, 1),
+                initial_visible_month=dt(2020, 6, 1),
                 # date=today
             ),
         ]),
 
         html.Button('Run Model', id='input_button', n_clicks=0),
-        html.Button('Reset',id='reset_button', n_clicks=0),
+        # html.Button('Reset',id='reset_button', n_clicks=0),
 
         html.Div(id='graph')
     ], className="container")

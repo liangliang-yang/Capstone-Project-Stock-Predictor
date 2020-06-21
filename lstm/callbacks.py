@@ -20,13 +20,10 @@ from keras.models import Sequential
 from keras.layers import Dense, Activation
 from keras.layers import Dropout
 from keras.layers import LSTM
-from keras.preprocessing.sequence import TimeseriesGenerator
+from sklearn.model_selection import train_test_split
 
 import warnings
 warnings.filterwarnings('ignore')
-
-
-colorscale = cl.scales['9']['qual']['Paired']
 
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
@@ -51,90 +48,88 @@ def download_stock_to_df(symbol, start, end):
     df_stock.reset_index(level=0, inplace=True)
     return df_stock
 
-def generate_train_sequence(train_data, n_steps):
+def generate_train_sequence(train_data, lookback_days, forcast_days):
     """
     Generate sequence array for train data,
     inclduing both X and y
     """
     X = []
     y = []
+    m = lookback_days
+    n =forcast_days
     N = len(train_data)
-    for i in range(N):
-        end_index = i + n_steps # find the end of this sequence
+
+    for i in range(0, N, 1):
+        # input sequence : x[i].....x[i+m]
+        # output sequence: x[i+m+1]....x[i+m+n]
+        # last index is (i+m+n)
+        end_index = i + m + n # find the end of this sequence
         # check if we are out of index
         if end_index > N-1:
             break
-        seq_x = train_data[i:end_index]
-        seq_y = train_data[end_index]
+        seq_x = train_data[i:(i+m)]
+        seq_y = train_data[(i+m):(i+m+n)]
         X.append(seq_x)
         y.append(seq_y)
-    return np.array(X), np.array(y)
 
-def generate_test_sequence(test_data, n_steps):
+    array_X = np.array(X) # shape (N, m, 1)
+    array_y = np.array([list(a.ravel()) for a in np.array(y)]) # shape (N, n, 1) convert to (N, n)
+    return array_X, array_y
+
+def generate_test_sequence(test_data, lookback_days, forcast_days):
     """
     Generate sequence array for test data,
     inclduing only X
     """
     X = []
+    y = []
+    m = lookback_days
+    n =forcast_days
     N = len(test_data)
-    for i in range(N):
-        end_index = i + n_steps # find the end of this sequence
+
+    for i in range(0, N, n): # here use 7, not 1, as we will use groups
+        # input sequence : x[i].....x[i+m]
+        # output sequence: x[i+m+1]....x[i+m+n]
+        # last index is (i+m+n)
+        end_index = i + m + n # find the end of this sequence
         # check if we are out of index
-        if end_index > N-1:
+        if end_index > N:
             break
-        seq_x = test_data[i:end_index]
+        seq_x = test_data[i:(i+m)]
+        seq_y = test_data[(i+m):(i+m+n)]
         X.append(seq_x)
-    return np.array(X)
+        y.append(seq_y)
+
+    array_X = np.array(X) # shape (N, m, 1)
+    array_y = np.array([list(a.ravel()) for a in np.array(y)]) # shape (N, n, 1) convert to (N, n)
+    return array_X, array_y
 
 def predict_future_price(df, lookback_days, forcast_days, model, sc):
     """
     Prediction of future stock price
     """
 
-    prediction_index_list = []
-    prediction_date_list = []
-    prediction_price_list = []
-    prediction_price_scaled_list = []
+    # calculate forcast dates and indexs, used for plot
+    B_DAY = CustomBusinessDay(calendar=USFederalHolidayCalendar()) # business day
+    forcast_dates = [df['Date'].iloc[-1]+i*B_DAY for i in range(1,forcast_days+1)]
+    forcast_indexs = [df['Date'].index[-1]+i for i in range(1,forcast_days+1)]
 
-    train_data = df.copy(deep=True) # init train data
-    prediction_start_index = train_data.index[-1]+1
-    prediction_start_date = train_data['Date'].iloc[-1]+1*B_DAY # need to use bussiness day
+    # input X for forcast
+    X_scaled = df[['Scaled_Close']][-lookback_days:].values
+    X_scaled = X_scaled.reshape((1, lookback_days, 1))
 
-    for i in range(forcast_days):
+    # prediction the scaled price with model
+    forcast_price_scaled = model.predict(X_scaled)
 
-        X_scaled = train_data[['Scaled_Close']][-lookback_days:].values
-
-        # using MinMaxScaler to normalize the price
-        # X_scaled = sc.transform(X)
-        X_scaled = X_scaled.reshape((1, lookback_days, 1))
-
-        # prediction the scaled price with model
-        prediction_price_scaled = model.predict(X_scaled)
-
-        # transform back to the normal price
-        prediction_price = sc.inverse_transform(prediction_price_scaled)[0][0]
-
-        # append prediction date, index and price
-        prediction_index = prediction_start_index + i
-        prediction_date = prediction_start_date + i*B_DAY
-
-        prediction_index_list.append(prediction_index)
-        prediction_date_list.append(prediction_date)
-        prediction_price_list.append(prediction_price)
-        prediction_price_scaled_list.append(prediction_price_scaled[0][0])
-
-        # update the train_data
-        train_data.loc[prediction_index, 'Date'] = prediction_date # update train_data
-        train_data.loc[prediction_index, 'Adj Close'] = prediction_price # update train_data
-        train_data.loc[prediction_index, 'Scaled_Close'] = prediction_price_scaled[0][0] # update train_data
-
+    # transform back to the normal price
+    forcast_prices = sc.inverse_transform(forcast_price_scaled)
 
     # create the forcast_dataframe
     forcast_dataframe = pd.DataFrame({
-        'index' : prediction_index_list,
-        'Date' : prediction_date_list,
-        'Adj Close' : prediction_price_list,
-        'Scaled_Close' : prediction_price_scaled_list
+        'index' : forcast_indexs,
+        'Date' : forcast_dates,
+        'Adj Close' : forcast_prices[0],
+        'Scaled_Close' : forcast_price_scaled[0]
     })
 
     forcast_dataframe = forcast_dataframe.set_index('index', drop=True)
@@ -153,31 +148,6 @@ def init_callbacks(symbol):
     ---------
     None
     """
-
-    # @app.callback(
-    #     dash.dependencies.Output('start-date-output-container', 'children'),
-    #     [dash.dependencies.Input('start-date-picker-range', 'date')])
-    # def update_start_date(date):
-    #     if date is not None:
-    #         date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
-    #         date_string = date.strftime('%B %d, %Y')
-    #         return 'You have selected {} for stock start date'.format(date_string)
-    #
-    # @app.callback(
-    #     dash.dependencies.Output('end-date-output-container', 'children'),
-    #     [dash.dependencies.Input('end-date-picker-range', 'date')])
-    # def update_end_date(date):
-    #     if date is not None:
-    #         date = dt.strptime(re.split('T| ', date)[0], '%Y-%m-%d')
-    #         date_string = date.strftime('%B %d, %Y')
-    #         return 'You have selected {} for stock end date'.format(date_string)
-
-    # @app.callback(
-    #     dash.dependencies.Output(component_id='graph', component_property='children'),
-    #     [
-    #         dash.dependencies.Input(component_id='stock-symbol-input', component_property='value')
-    #     ]
-    # )
 
     @app.callback(
         dash.dependencies.Output('output','children'),
@@ -204,14 +174,11 @@ def init_callbacks(symbol):
 
     def update_graph(symbol, start_date, end_date, n_clicks):
 
-        # df = download_stock_to_df(symbol, '2015-01-01', '2019-01-01')
-
         if n_clicks < 1:
-            return "Click Run Model after date selections to begin."
+            return "Click Run Model after date selections."
 
         start_date = str(start_date)
         end_date = str(end_date)
-        print(symbol, start_date, end_date)
 
         df = download_stock_to_df(symbol, start_date, end_date)
         df.drop(columns=['Open', 'High', 'Low', 'Close', 'Volume'], inplace=True)
@@ -221,87 +188,82 @@ def init_callbacks(symbol):
         sc = MinMaxScaler(feature_range=(0.01,0.99))
         df['Scaled_Close'] = sc.fit_transform(df[['Adj Close']])
 
-        # split into train and test/validation
-        from sklearn.model_selection import train_test_split
-        dataset_train , dataset_test = train_test_split(df, train_size=0.9, test_size=0.1, shuffle=False)
+        # define some parameters
+        num_periods = 40
+        forcast_days = 7
+        lookback_days = 15
+
+        N = df.shape[0]
+        N_test = num_periods*forcast_days
+        N_train = N - N_test
+
+        # split into train and test sets
+        dataset_train , dataset_test = train_test_split(df, train_size=N_train, test_size=N_test, shuffle=False)
+        dataset_test_extend = dataset_train[-lookback_days:].append(dataset_test)
 
         train_set = dataset_train[['Scaled_Close']].values
         test_set = dataset_test[['Scaled_Close']].values
+        test_set_extend = dataset_test_extend[['Scaled_Close']].values
 
-        lookback_days = 15
-
-        # train
-        X_train, y_train = generate_train_sequence(train_set, lookback_days)
+        # create train set sequence
+        X_train, y_train = generate_train_sequence(train_set, lookback_days, forcast_days)
         # X_train, y_train = generate_train_sequence(train_set_scaled, lookback_days)
 
-        # init model
+        # define model
         model = Sequential()
-        model.add(LSTM(units=lookback_days, activation='relu', input_shape=(lookback_days,1)))
-        model.add(Dense(1))
+        model.add(LSTM(units=30, activation='relu', input_shape=(lookback_days,1)))
+        model.add(Dense(forcast_days))
         model.compile(optimizer='adam', loss='mean_squared_error')
 
-        num_epochs = 100
-        model.fit(X_train,y_train,epochs=num_epochs,batch_size=32)
+        num_epochs = 200
+        history  = model.fit(X_train,y_train,epochs=num_epochs,batch_size=32)
 
-        # test
-        test_set_extend = dataset_train[['Scaled_Close']][-lookback_days:].append(dataset_test[['Scaled_Close']]).values
-        # test_set_extend = dataset_train[['Adj Close']][-lookback_days:].append(dataset_test[['Adj Close']]).values
-        # test_set_extend_scaled = sc.transform(test_set_extend)
+        # create test set sequence
+        X_test, y_test = generate_test_sequence(test_set_extend, lookback_days, forcast_days)
 
-        X_test = generate_test_sequence(test_set_extend, lookback_days)
-
-        # prediction = model.predict(X_test)
-        prediction_scaled = model.predict(X_test)
-        prediction = sc.inverse_transform(prediction_scaled)
+        # run prediction for the test dataset
+        LSTM_prediction_scaled = model.predict(X_test)
+        LSTM_prediction = sc.inverse_transform(LSTM_prediction_scaled)
 
         train_set = train_set.reshape((-1))
         test_set = test_set.reshape((-1))
-        prediction = prediction.reshape((-1))
+        LSTM_prediction = LSTM_prediction.reshape((-1))
 
-        dataset_test['Prediction'] = prediction
+        dataset_test['LSTM_Prediction'] = LSTM_prediction
 
         # forcast
-        # data_price = df[['Adj Close']].values
-        # data_index = df[['Adj Close']].index
-
-        forcast_days = 5
-        # re-train the model with full data set_index, removed as for now
-        # full_set = df[['Scaled_Close']].values
-        # X_train_full, y_train_full = generate_train_sequence(full_set, lookback_days)
-        # model.fit(X_train_full,y_train_full,epochs=num_epochs,batch_size=32)
-
         dataset_forcast = predict_future_price(df, lookback_days, forcast_days, model, sc)
-        # forcast_set = dataset_forcast['Adj Close'].values
-        # forcast_index = dataset_forcast.index
 
 
         trace1 = go.Scatter(
             x = dataset_train['Date'],
             y = dataset_train['Adj Close'],
-            mode = 'lines',
-            name = 'Train-set'
+            # mode = 'lines',
+            line = dict(color='blue', width=2),
+            name = 'Train'
         )
         trace2 = go.Scatter(
             x = dataset_test['Date'],
-            y = dataset_test['Prediction'],
-            mode = 'lines',
-            name = 'Test-set-Prediction'
+            y = dataset_test['Adj Close'],
+            # mode='lines',
+            line = dict(color='blue', width=2),
+            name = 'Test-True-Price'
         )
         trace3 = go.Scatter(
             x = dataset_test['Date'],
-            y = dataset_test['Adj Close'],
-            mode='lines',
-            name = 'Test-set-Ground_Truth'
+            y = dataset_test['LSTM_Prediction'],
+            # mode = 'lines',
+            line = dict(color='red', width=2),
+            name = 'Test-LSTM-Prediction'
         )
         trace4 = go.Scatter(
         x = dataset_forcast['Date'],
         y = dataset_forcast['Adj Close'],
-        # mode='lines+markers',
-        line = dict(color='red', width=2, dash='dot'),
+        line = dict(color='green', width=2, dash='dot'),
         name = 'Forcast'
     )
         layout = go.Layout(
-            title = "AAPL Stock",
+            title = "Stock".format(symbol),
             xaxis = {'title' : "Date"},
             yaxis = {'title' : "Adj Close ($)"}
         )
@@ -313,89 +275,4 @@ def init_callbacks(symbol):
             figure=fig
         )
 
-
-
-        # stock_data = {
-        #     'x': df['Date'],
-        #     'y': df['Adj Close'],
-        #     'line': {'width': 2, 'color': 'red'},
-        #     'name': ticker + ' Adj Close Price',
-        #     'legendgroup': ticker,
-        # }
-        #
-        # bb_bands = bbands(df['Adj Close'])
-        # bollinger_traces = [{
-        #     'x': df['Date'], 'y': y,
-        #     'type': 'scatter',
-        #     'mode': 'lines',
-        #     'line': {'width': 1, 'color': colorscale[(i*2) % len(colorscale)]},
-        #     # 'line': {'width': 1, 'color': 'blue'},
-        #     'hoverinfo': 'none',
-        #     # 'legendgroup': ticker,
-        #     # 'showlegend': True if i == 0 else False,
-        #     'showlegend': True,
-        #     'name': 'upper Bollinger Bands' if i == 0 else 'lower Bollinger Bands',
-        # } for i, y in enumerate(bb_bands)]
-        #
-        # graph = dcc.Graph(
-        #     id=ticker,
-        #     figure={
-        #         'data': [stock_data] + bollinger_traces,
-        #         'layout': {
-        #             'margin': {'b': 0, 'r': 10, 'l': 60, 't': 0},
-        #             'legend': {'x': 0}
-        #         }
-        #     }
-        # )
-
         return graph
-
-
-    # def update_graph(tickers):
-    #     graphs = []
-    #
-    #     if not tickers:
-    #         graphs.append(html.H3(
-    #             "Select a stock ticker.",
-    #             style={'marginTop': 20, 'marginBottom': 20}
-    #         ))
-    #     else:
-    #         for i, ticker in enumerate(tickers):
-    #
-    #             # dff = df[df['Stock'] == ticker]
-    #             df = download_stock_to_df(ticker, '2015-01-01', '2019-01-01')
-    #
-    #             candlestick = {
-    #                 'x': df['Date'],
-    #                 'open': df['Open'],
-    #                 'high': df['High'],
-    #                 'low': df['Low'],
-    #                 'close': df['Close'],
-    #                 'type': 'candlestick',
-    #                 'name': ticker,
-    #                 'legendgroup': ticker,
-    #                 'increasing': {'line': {'color': colorscale[0]}},
-    #                 'decreasing': {'line': {'color': colorscale[1]}}
-    #             }
-    #             bb_bands = bbands(df.Close)
-    #             bollinger_traces = [{
-    #                 'x': df['Date'], 'y': y,
-    #                 'type': 'scatter', 'mode': 'lines',
-    #                 'line': {'width': 1, 'color': colorscale[(i*2) % len(colorscale)]},
-    #                 'hoverinfo': 'none',
-    #                 'legendgroup': ticker,
-    #                 'showlegend': True if i == 0 else False,
-    #                 'name': '{} - bollinger bands'.format(ticker)
-    #             } for i, y in enumerate(bb_bands)]
-    #             graphs.append(dcc.Graph(
-    #                 id=ticker,
-    #                 figure={
-    #                     'data': [candlestick] + bollinger_traces,
-    #                     'layout': {
-    #                         'margin': {'b': 0, 'r': 10, 'l': 60, 't': 0},
-    #                         'legend': {'x': 0}
-    #                     }
-    #                 }
-    #             ))
-    #
-    #     return graphs
