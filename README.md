@@ -12,11 +12,12 @@ Besides the two notebooks, you can find the detailed report for the work.
 
 In addition to the LSTM stock prediction model building and analysis, an interactive web application was also created. In order to run the web application, please follow these steps:
 * Git clone the repository
-  + `git clone ...`
+  + `git clone https://github.com/liangliang-yang/Capstone-Project-Stock-Predictor.git`
 
 * Create the conda env with the `requirements.txt`
-  + cd `..`
-  + `conda create --name ML --file requirements.txt`
+  + `cd Capstone-Project-Stock-Predictor`
+  + `conda env create -f environment.yml`
+  + `source activate ML`
 
 * Run the web application by:
   + `cd lstm`
