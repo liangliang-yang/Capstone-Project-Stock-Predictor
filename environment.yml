@@ -1,4 +1,4 @@
-name: testML
+name: ML
 channels:
   - defaults
   - conda-forge
