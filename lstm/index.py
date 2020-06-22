@@ -20,7 +20,16 @@ def run_server():
     symbol_options = [
         {'label': 'AAPL', 'value': 'AAPL'},
         {'label': 'MSFT', 'value': 'MSFT'},
-        {'label': 'AMZN', 'value': 'AMZN'}
+        {'label': 'AMZN', 'value': 'AMZN'},
+        {'label': 'GOOGL', 'value': 'GOOGL'},
+        {'label': 'FB', 'value': 'FB'},
+        {'label': 'AMD', 'value': 'AMD'},
+        {'label': 'ALK', 'value': 'ALK'},
+        {'label': 'ALL', 'value': 'ALL'},
+        {'label': 'AXP', 'value': 'AXP'},
+        {'label': 'CVS', 'value': 'CVS'},
+        {'label': 'EBAY', 'value': 'EBAY'},
+        {'label': 'INTC', 'value': 'INTC'}
     ]
 
     app.layout = html.Div([

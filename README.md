@@ -23,7 +23,8 @@ In addition to the LSTM stock prediction model building and analysis, an interac
   + `cd lstm`
   + `python index.py`
   + When the web server is on, go to http://127.0.0.1:8080/
-
+  + Choose the stock symbol from the dropdown lists (some stock examples are provided.) Choose the start_date and end_date, and the click `Run Model` button. The whole model running process will take about 10 minutes, you can see the progress in the terminal. After that, you can see the interactive plot for stock price (including train test and forcast).
+  + ![Screenshot of the web application](/figures/LSTM.PNG)
 
 
 ## Prerequisites
