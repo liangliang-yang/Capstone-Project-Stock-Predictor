@@ -14,14 +14,16 @@ In addition to the LSTM stock prediction model building and analysis, an interac
 * Git clone the repository
   + `git clone https://github.com/liangliang-yang/Capstone-Project-Stock-Predictor.git`
 
-* Create the conda env with the `requirements.txt`
+* Create the conda env with the `requirement.yml`
   + `cd Capstone-Project-Stock-Predictor`
   + `conda env create -f environment.yml`
-  + `source activate ML`
+  + `conda activate ML`
 
 * Run the web application by:
   + `cd lstm`
-  +  `python index.py`
+  + `python index.py`
+  + When the web server is on, go to http://127.0.0.1:8080/
+
 
 
 ## Prerequisites
